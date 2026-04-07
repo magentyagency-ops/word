@@ -118,24 +118,57 @@ function App() {
     const file = e.target.files[0]
     if (!file || !editor) return
 
-    const reader = new FileReader()
-    reader.onload = (event) => {
-      const content = event.target.result
-      
-      // Update the placeholder node in the editor
-      editor.chain().focus()
-        .updateAttributes('fileAttachment', {
-          fileName: file.name,
-          fileContent: content,
-          status: 'attached'
-        })
-        .run()
-    }
-
-    if (file.type.startsWith('image/')) {
-      reader.readAsDataURL(file) // For images, base64
+    if (file.type === 'application/pdf') {
+      const reader = new FileReader()
+      reader.onload = async (event) => {
+        try {
+          const typedarray = new Uint8Array(event.target.result)
+          const loadingTask = pdfjsLib.getDocument({ data: typedarray })
+          const pdf = await loadingTask.promise
+          let fullText = ''
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i)
+            const textContent = await page.getTextContent()
+            fullText += textContent.items.map(item => item.str).join(' ') + '\n'
+          }
+          
+          editor.chain().focus()
+            .updateAttributes('fileAttachment', {
+              fileName: file.name,
+              fileContent: fullText,
+              status: 'attached'
+            })
+            .run()
+        } catch (err) {
+          console.error('Error parsing attached PDF:', err)
+          setErrorMsg(`Erreur lecture PDF: ${file.name}`)
+        }
+      }
+      reader.readAsArrayBuffer(file)
+    } else if (file.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        editor.chain().focus()
+          .updateAttributes('fileAttachment', {
+            fileName: file.name,
+            fileContent: event.target.result,
+            status: 'attached'
+          })
+          .run()
+      }
+      reader.readAsDataURL(file)
     } else {
-      reader.readAsText(file) // For text/code
+      const reader = new FileReader()
+      reader.onload = (event) => {
+        editor.chain().focus()
+          .updateAttributes('fileAttachment', {
+            fileName: file.name,
+            fileContent: event.target.result,
+            status: 'attached'
+          })
+          .run()
+      }
+      reader.readAsText(file)
     }
     
     // Clear input
