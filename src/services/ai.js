@@ -37,7 +37,7 @@ export async function solveExercise(text, attachments = []) {
       messages: [
         {
           role: 'system',
-          content: 'You are an educational assistant. The user will provide an exercise or a question, possibly with images or text files. Respond in simple, natural English with a clear structure. Do not use bullet points or any markdown formatting except for paragraph breaks. Provide only the text ready to be copied into a document. Do not add conversational filler like "Here is the answer".'
+          content: 'You are an educational assistant. The user will provide an exercise or a question, possibly with images or text files. Some attachments may be course slides or background material; use them as context if they are relevant to solving the user question. Respond in simple, natural English with a clear structure. Do not use bullet points or any markdown formatting except for paragraph breaks. Provide only the text ready to be copied into a document. Do not add conversational filler like "Here is the answer".'
         },
         {
           role: 'user',

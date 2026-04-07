@@ -14,7 +14,7 @@ export default defineConfig({
         name: 'Microsoft Word Web',
         short_name: 'Word',
         description: 'Éditeur de documents intelligent avec GPT-5.4',
-        theme_color: '#2b579a',
+        theme_color: '#ffffff',
         icons: [
           {
             src: 'icon.png',

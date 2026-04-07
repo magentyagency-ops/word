@@ -8,7 +8,7 @@ import {
   FileText, Globe, LayoutList, Columns, PanelRight,
   Strikethrough, Subscript, Superscript, Baseline, Highlighter, Paintbrush,
   ArrowDownUp, Pilcrow, IndentDecrease, IndentIncrease, ListCollapse,
-  Diamond, TableProperties, Settings, Focus, Pen, Eye
+  Diamond, TableProperties, Settings, Focus, Pen, Eye, Trash2
 } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
@@ -19,7 +19,11 @@ import { TextStyle } from '@tiptap/extension-text-style'
 import { Color } from '@tiptap/extension-color'
 import { Highlight } from '@tiptap/extension-highlight'
 import { FileAttachment } from './extensions/FileAttachment'
-import { useRef } from 'react'
+import { useRef, useEffect } from 'react'
+import * as pdfjsLib from 'pdfjs-dist'
+
+// Setup PDF worker
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
 
 function App() {
   const [activeTab, setActiveTab] = useState('Accueil')
@@ -31,6 +35,7 @@ function App() {
   const [showColorPicker, setShowColorPicker] = useState(false)
   const [isAiThinking, setIsAiThinking] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
+  const [knowledgeBase, setKnowledgeBase] = useState([]) // For global course context
 
   const editor = useEditor({
     extensions: [
@@ -82,7 +87,8 @@ function App() {
       setIsAiThinking(true)
       setErrorMsg(null)
       try {
-        const answer = await solveExercise(selectedText, attachments)
+        const combinedAttachments = [...attachments, ...knowledgeBase]
+        const answer = await solveExercise(selectedText, combinedAttachments)
         editor.chain().focus()
           .insertContentAt(to, `\n\n${answer}`)
           .run()
@@ -133,6 +139,56 @@ function App() {
     }
     
     // Clear input
+    e.target.value = ''
+  }
+
+  const knowledgeInputRef = useRef(null)
+
+  const handleKnowledgeUpload = async (e) => {
+    const files = Array.from(e.target.files)
+    for (const file of files) {
+      if (file.type === 'application/pdf') {
+        const reader = new FileReader()
+        reader.onload = async (event) => {
+          try {
+            const typedarray = new Uint8Array(event.target.result)
+            const loadingTask = pdfjsLib.getDocument(typedarray)
+            const pdf = await loadingTask.promise
+            let fullText = ''
+            for (let i = 1; i <= pdf.numPages; i++) {
+              const page = await pdf.getPage(i)
+              const textContent = await page.getTextContent()
+              fullText += textContent.items.map(item => item.str).join(' ') + '\n'
+            }
+            setKnowledgeBase(prev => [
+              ...prev,
+              { name: file.name, content: fullText, type: 'text' }
+            ])
+          } catch (err) {
+            console.error('Error parsing PDF:', err)
+            setErrorMsg(`Erreur lecture PDF: ${file.name}`)
+          }
+        }
+        reader.readAsArrayBuffer(file)
+      } else {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          setKnowledgeBase(prev => [
+            ...prev,
+            {
+              name: file.name,
+              content: event.target.result,
+              type: file.type.startsWith('image/') ? 'image' : 'text'
+            }
+          ])
+        }
+        if (file.type.startsWith('image/')) {
+          reader.readAsDataURL(file)
+        } else {
+          reader.readAsText(file)
+        }
+      }
+    }
     e.target.value = ''
   }
 
@@ -563,8 +619,49 @@ function App() {
         </div>
       )}
 
+      {activeTab === 'Révision' && (
+        <div className="ribbon">
+          <div className="ribbon-group">
+            <div className="large-action-group">
+              <button 
+                className="large-action-btn"
+                onClick={() => knowledgeInputRef.current?.click()}
+              >
+                <div style={{ position: 'relative' }}>
+                  <FileText size={22} />
+                  <Plus size={10} style={{ position: 'absolute', bottom: -2, right: -2, background: 'white', borderRadius: '50%' }} />
+                </div>
+                <span>Charger Slides (CSR)</span>
+              </button>
+            </div>
+            <div className="knowledge-list">
+              {knowledgeBase.length === 0 ? (
+                <span className="empty-msg">Aucun document chargé</span>
+              ) : (
+                <div className="kb-badges">
+                  {knowledgeBase.map((f, i) => (
+                    <div key={i} className="kb-badge" title={f.name}>
+                      {f.name.substring(0, 8)}...
+                      <span className="remove-kb" onClick={() => setKnowledgeBase(prev => prev.filter((_, idx) => idx !== i))}>×</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+          <div className="ribbon-group" style={{ borderRight: 'none' }}>
+            <div className="large-action-group">
+              <button className="large-action-btn" onClick={() => setKnowledgeBase([])}>
+                <Trash2 size={22} />
+                <span>Effacer Base</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Empty ribbon for other tabs */}
-      {!['Accueil', 'Insérer'].includes(activeTab) && (
+      {!['Accueil', 'Insérer', 'Révision'].includes(activeTab) && (
         <div className="ribbon" style={{ minHeight: 80, justifyContent: 'center', alignItems: 'center' }}>
           <span style={{ color: '#999', fontSize: 12 }}>Onglet {activeTab}</span>
         </div>
@@ -582,6 +679,14 @@ function App() {
         ref={fileInputRef} 
         style={{ display: 'none' }} 
         onChange={onFileChange}
+      />
+
+      <input 
+        type="file" 
+        multiple
+        ref={knowledgeInputRef} 
+        style={{ display: 'none' }} 
+        onChange={handleKnowledgeUpload}
       />
 
       {/* ═══════════ STATUS BAR ═══════════ */}

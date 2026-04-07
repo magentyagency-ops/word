@@ -2,7 +2,7 @@
 
 :root {
   /* Word exact colors */
-  --title-bar-bg: #f3f3f3;
+  --title-bar-bg: #ffffff;
   --title-bar-text: #1a1a1a;
   --ribbon-bg: #ffffff;
   --ribbon-border: #d1d1d1;
@@ -626,6 +626,49 @@ body {
   color: var(--text-primary);
   text-align: center;
   line-height: 1.2;
+}
+
+.knowledge-list {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding-left: 12px;
+  min-width: 150px;
+}
+
+.empty-msg {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+.kb-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.kb-badge {
+  background: var(--btn-hover-bg);
+  border: 1px solid var(--divider);
+  border-radius: 12px;
+  padding: 2px 8px;
+  font-size: 10px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-primary);
+}
+
+.remove-kb {
+  cursor: pointer;
+  color: #d93025;
+  font-weight: bold;
+  font-size: 12px;
+}
+
+.remove-kb:hover {
+  color: #a50e0e;
 }
 
 /* ═══════════ EDITOR AREA ═══════════ */
