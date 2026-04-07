@@ -22,8 +22,8 @@ import { FileAttachment } from './extensions/FileAttachment'
 import { useRef, useEffect } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 
-// Setup PDF worker
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`
+// Setup PDF worker using a more reliable CDN link matching the package version
+pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
 
 function App() {
   const [activeTab, setActiveTab] = useState('Accueil')
@@ -152,7 +152,7 @@ function App() {
         reader.onload = async (event) => {
           try {
             const typedarray = new Uint8Array(event.target.result)
-            const loadingTask = pdfjsLib.getDocument(typedarray)
+            const loadingTask = pdfjsLib.getDocument({ data: typedarray })
             const pdf = await loadingTask.promise
             let fullText = ''
             for (let i = 1; i <= pdf.numPages; i++) {
@@ -166,7 +166,8 @@ function App() {
             ])
           } catch (err) {
             console.error('Error parsing PDF:', err)
-            setErrorMsg(`Erreur lecture PDF: ${file.name}`)
+            setErrorMsg(`Erreur lecture PDF (${file.name}): ${err.message}`)
+            setTimeout(() => setErrorMsg(null), 5000)
           }
         }
         reader.readAsArrayBuffer(file)
