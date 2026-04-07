@@ -11,7 +11,7 @@ export default defineConfig({
       injectRegister: 'auto',
       includeAssets: ['favicon.ico', 'apple-touch-icon.png', 'mask-icon.svg'],
       manifest: {
-        name: 'Microsoft Word Web',
+        name: 'Microsoft Word',
         short_name: 'Word',
         description: 'Éditeur de documents intelligent avec GPT-5.4',
         theme_color: '#ffffff',
