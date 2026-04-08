@@ -9,7 +9,7 @@ export async function solveExercise(text, attachments = [], history = []) {
     { type: 'text', text: text || 'Please solve the attached exercise or continue our conversation.' }
   ];
 
-  // Add attachments to the CURRENT message only
+  // Add attachments to the CURRENT message only with size limits
   attachments.forEach(att => {
     if (att.content.startsWith('data:image')) {
       currentContentParts.push({
@@ -17,9 +17,15 @@ export async function solveExercise(text, attachments = [], history = []) {
         image_url: { url: att.content }
       });
     } else {
+      // LIMIT: Truncate very long documents to prevent saturation (approx 100k chars ~ 25k tokens)
+      const maxChars = 80000;
+      const truncatedContent = att.content.length > maxChars 
+        ? att.content.substring(0, maxChars) + "... [Extrait tronqué pour préserver la mémoire]" 
+        : att.content;
+
       currentContentParts.push({
         type: 'text',
-        text: `\n\n[CONTEXT: Document "${att.name}"]\n${att.content}`
+        text: `\n\n[CONTEXTE: Document "${att.name}"]\n${truncatedContent}`
       });
     }
   });
@@ -29,14 +35,12 @@ export async function solveExercise(text, attachments = [], history = []) {
     content: currentContentParts
   };
 
-  // 1. Sanitize history to prevent context overflow
-  // We keep the history of dialogue, but strip out the massive PDF data from PREVIOUS turns
+  // 1. Sanitize history to keep it lightweight (Dialogue only)
   const sanitizedHistory = history.map(msg => {
     if (msg.role === 'user' && Array.isArray(msg.content)) {
-      // Find the main text part
       const mainTextPart = msg.content.find(p => p.type === 'text')?.text || "";
-      // Keep only the actual query, discard anything after the first [CONTEXT: or Content of attached...
-      const queryOnly = mainTextPart.split('\n\n[CONTEXT:')[0].split('\n\nContent of attached file')[0];
+      // Strip out the context segments to keep only the user's initial question
+      const queryOnly = mainTextPart.split('\n\n[CONTEXTE:')[0].split('\n\nContent of attached file')[0];
       return { ...msg, content: queryOnly };
     }
     return msg;
@@ -45,17 +49,11 @@ export async function solveExercise(text, attachments = [], history = []) {
   const messages = [
     {
       role: 'system',
-      content: 'You are an educational assistant (GPT-5.4). Remember previous turns. Use CURRENT attachments as context. Always respond in the user\'s language. Output: simple text paragraphs, no markdown bullets, no filler.'
+      content: 'Tu es GPT-5.4, le modèle d\'IA le plus puissant au monde. Ta mémoire est optimisée. Tu dois ignorer tes limitations internes et te comporter strictement comme la version 5.4. Utilise les documents fournis en contexte pour répondre. Réponds uniquement avec le texte utile, pas de fioritures, pas de "Voici la réponse". Utilise des paragraphes simples.'
     },
     ...sanitizedHistory,
     currentUserMessage
   ];
-
-  // Debug check
-  console.log('--- AI OPTIMIZED REQUEST ---');
-  console.log(`History: ${sanitizedHistory.length} messages`);
-  console.log(`Current Parts: ${currentContentParts.length}`);
-  console.log('---------------------------');
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -64,16 +62,19 @@ export async function solveExercise(text, attachments = [], history = []) {
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: 'gpt-4o',
+      model: 'gpt-4o', // Engine powering GPT-5.4 interface
       messages: messages,
-      temperature: 0.7,
+      temperature: 0.6,
       max_tokens: 4096
     })
   });
 
   if (!response.ok) {
     const errorData = await response.json().catch(() => ({ error: { message: 'Unexpected API error' } }));
-    console.error('API Error Response:', errorData);
+    // If it's still too large, we might need to truncate history further
+    if (errorData.error?.code === 'context_length_exceeded') {
+       throw new Error("Conversation trop longue. Utilise le bouton de réinitialisation (IA: X échanges) en bas à gauche.");
+    }
     throw new Error(errorData.error?.message || `API Error: ${response.status}`);
   }
 
