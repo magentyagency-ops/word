@@ -21,9 +21,10 @@ import { Highlight } from '@tiptap/extension-highlight'
 import { FileAttachment } from './extensions/FileAttachment'
 import { useRef, useEffect } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
+import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
 
-// Setup PDF worker using a more reliable CDN link matching the package version
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`
+// Setup PDF worker using the local bundled worker for reliability
+pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
 
 function App() {
   const [activeTab, setActiveTab] = useState('Accueil')
@@ -129,61 +130,76 @@ function App() {
     }
   }
 
+  // Generic helper to extract text from PDF
+  const extractTextFromPDF = async (arrayBuffer) => {
+    try {
+      const loadingTask = pdfjsLib.getDocument({ 
+        data: arrayBuffer,
+        useSystemFonts: true,
+        disableFontFace: false
+      })
+      const pdf = await loadingTask.promise
+      let fullText = ''
+      for (let i = 1; i <= pdf.numPages; i++) {
+        const page = await pdf.getPage(i)
+        const textContent = await page.getTextContent()
+        const pageText = textContent.items.map(item => item.str).join(' ')
+        fullText += pageText + '\n'
+      }
+      return fullText
+    } catch (err) {
+      console.error('PDF Extraction error:', err)
+      throw new Error(`Erreur d'extraction du PDF: ${err.message}`)
+    }
+  }
+
   const onFileChange = async (e) => {
     const file = e.target.files[0]
     if (!file || !editor) return
 
-    if (file.type === 'application/pdf') {
-      const reader = new FileReader()
-      reader.onload = async (event) => {
-        try {
-          const typedarray = new Uint8Array(event.target.result)
-          const loadingTask = pdfjsLib.getDocument({ data: typedarray })
-          const pdf = await loadingTask.promise
-          let fullText = ''
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i)
-            const textContent = await page.getTextContent()
-            fullText += textContent.items.map(item => item.str).join(' ') + '\n'
-          }
-          
+    setIsAiThinking(true)
+    setErrorMsg(null)
+    try {
+      if (file.type === 'application/pdf') {
+        const buffer = await file.arrayBuffer()
+        const text = await extractTextFromPDF(buffer)
+        
+        editor.chain().focus()
+          .updateAttributes('fileAttachment', {
+            fileName: file.name,
+            fileContent: text,
+            status: 'attached'
+          })
+          .run()
+      } else if (file.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onload = (event) => {
           editor.chain().focus()
             .updateAttributes('fileAttachment', {
               fileName: file.name,
-              fileContent: fullText,
+              fileContent: event.target.result,
               status: 'attached'
             })
             .run()
-        } catch (err) {
-          console.error('Error parsing attached PDF:', err)
-          setErrorMsg(`Erreur lecture PDF: ${file.name}`)
+          setIsAiThinking(false)
         }
-      }
-      reader.readAsArrayBuffer(file)
-    } else if (file.type.startsWith('image/')) {
-      const reader = new FileReader()
-      reader.onload = (event) => {
+        reader.readAsDataURL(file)
+        return // Exit to wait for onload
+      } else {
+        const text = await file.text()
         editor.chain().focus()
           .updateAttributes('fileAttachment', {
             fileName: file.name,
-            fileContent: event.target.result,
+            fileContent: text,
             status: 'attached'
           })
           .run()
       }
-      reader.readAsDataURL(file)
-    } else {
-      const reader = new FileReader()
-      reader.onload = (event) => {
-        editor.chain().focus()
-          .updateAttributes('fileAttachment', {
-            fileName: file.name,
-            fileContent: event.target.result,
-            status: 'attached'
-          })
-          .run()
-      }
-      reader.readAsText(file)
+    } catch (err) {
+      console.error('Error parsing attached file:', err)
+      setErrorMsg(err.message)
+    } finally {
+      setIsAiThinking(false)
     }
     
     // Clear input
@@ -194,50 +210,44 @@ function App() {
 
   const handleKnowledgeUpload = async (e) => {
     const files = Array.from(e.target.files)
+    setErrorMsg(null)
+    setIsAiThinking(true)
+    
     for (const file of files) {
-      if (file.type === 'application/pdf') {
-        const reader = new FileReader()
-        reader.onload = async (event) => {
-          try {
-            const typedarray = new Uint8Array(event.target.result)
-            const loadingTask = pdfjsLib.getDocument({ data: typedarray })
-            const pdf = await loadingTask.promise
-            let fullText = ''
-            for (let i = 1; i <= pdf.numPages; i++) {
-              const page = await pdf.getPage(i)
-              const textContent = await page.getTextContent()
-              fullText += textContent.items.map(item => item.str).join(' ') + '\n'
-            }
-            setKnowledgeBase(prev => [
-              ...prev,
-              { name: file.name, content: fullText, type: 'text' }
-            ])
-          } catch (err) {
-            console.error('Error parsing PDF:', err)
-            setErrorMsg(`Erreur lecture PDF (${file.name}): ${err.message}`)
-            setTimeout(() => setErrorMsg(null), 5000)
-          }
-        }
-        reader.readAsArrayBuffer(file)
-      } else {
-        const reader = new FileReader()
-        reader.onload = (event) => {
+      try {
+        if (file.type === 'application/pdf') {
+          const buffer = await file.arrayBuffer()
+          const text = await extractTextFromPDF(buffer)
           setKnowledgeBase(prev => [
             ...prev,
-            {
-              name: file.name,
-              content: event.target.result,
-              type: file.type.startsWith('image/') ? 'image' : 'text'
+            { name: file.name, content: text, type: 'text' }
+          ])
+        } else if (file.type.startsWith('image/')) {
+          // Wrap FileReader in promise to ensure sequential or at least tracked loading
+          await new Promise((resolve) => {
+            const reader = new FileReader()
+            reader.onload = (event) => {
+              setKnowledgeBase(prev => [
+                ...prev,
+                { name: file.name, content: event.target.result, type: 'image' }
+              ])
+              resolve()
             }
+            reader.readAsDataURL(file)
+          })
+        } else {
+          const text = await file.text()
+          setKnowledgeBase(prev => [
+            ...prev,
+            { name: file.name, content: text, type: 'text' }
           ])
         }
-        if (file.type.startsWith('image/')) {
-          reader.readAsDataURL(file)
-        } else {
-          reader.readAsText(file)
-        }
+      } catch (err) {
+        console.error('Knowledge upload error:', err)
+        setErrorMsg(`Erreur sur ${file.name}: ${err.message}`)
       }
     }
+    setIsAiThinking(false)
     e.target.value = ''
   }
 
@@ -295,43 +305,37 @@ function App() {
     }
   }
 
-  const addToKnowledgeBase = (file) => {
-    const reader = new FileReader()
-    reader.onload = async (event) => {
-      let content = event.target.result
-      let type = 'text'
-      
-      if (file.type === 'application/pdf') {
-        try {
-          const typedarray = new Uint8Array(event.target.result)
-          const loadingTask = pdfjsLib.getDocument({ data: typedarray })
-          const pdf = await loadingTask.promise
-          content = ''
-          for (let i = 1; i <= pdf.numPages; i++) {
-            const page = await pdf.getPage(i)
-            const textContent = await page.getTextContent()
-            content += textContent.items.map(item => item.str).join(' ') + '\n'
-          }
-        } catch (err) {
-          console.error('Error parsing PDF for KB:', err)
-          return
+  const addToKnowledgeBase = async (file) => {
+    const actualFile = file.rawFile || file
+    setErrorMsg(null)
+
+    try {
+      if (actualFile.type === 'application/pdf') {
+        const buffer = await actualFile.arrayBuffer()
+        const text = await extractTextFromPDF(buffer)
+        setKnowledgeBase(prev => [
+          ...prev,
+          { name: actualFile.name, content: text, type: 'text' }
+        ])
+      } else if (actualFile.type.startsWith('image/')) {
+        const reader = new FileReader()
+        reader.onload = (event) => {
+          setKnowledgeBase(prev => [
+            ...prev,
+            { name: actualFile.name, content: event.target.result, type: 'image' }
+          ])
         }
-      } else if (file.type.startsWith('image/')) {
-        type = 'image'
+        reader.readAsDataURL(actualFile)
+      } else {
+        const text = await actualFile.text()
+        setKnowledgeBase(prev => [
+          ...prev,
+          { name: actualFile.name, content: text, type: 'text' }
+        ])
       }
-      
-      setKnowledgeBase(prev => [
-        ...prev,
-        { name: file.name, content, type }
-      ])
-    }
-    
-    if (file.type === 'application/pdf') {
-      reader.readAsArrayBuffer(file.rawFile || file)
-    } else if (file.type.startsWith('image/')) {
-      reader.readAsDataURL(file.rawFile || file)
-    } else {
-      reader.readAsText(file.rawFile || file)
+    } catch (err) {
+      console.error('Error adding to Knowledge Base:', err)
+      setErrorMsg(`Erreur: ${err.message}`)
     }
   }
 
@@ -963,7 +967,7 @@ function App() {
       <div className="status-bar">
         <div className="status-bar-left">
           {isAiThinking ? (
-            <span className="ai-loading-text">✨ L'IA réfléchit à votre exercice...</span>
+            <span className="ai-loading-text">✨ Traitement des documents en cours...</span>
           ) : errorMsg ? (
             <span style={{ color: '#d93025' }}>⚠️ {errorMsg}</span>
           ) : (
