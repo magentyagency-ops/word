@@ -912,6 +912,41 @@ body {
   animation: pulse 2s infinite;
 }
 
+/* Reset Chat Button */
+.reset-chat-btn {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--text-muted);
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.reset-chat-btn:hover {
+  background: #e5e5e5;
+  color: var(--blue-accent);
+}
+
+.reset-chat-btn:hover svg {
+  animation: spin 0.5s ease;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.reset-chat-btn svg {
+  width: 12px;
+  height: 12px;
+}
+
 /* File Attachment Styles */
 .file-open-btn {
   font-weight: bold;

@@ -8,7 +8,7 @@ import {
   FileText, Globe, LayoutList, Columns, PanelRight,
   Strikethrough, Subscript, Superscript, Baseline, Highlighter, Paintbrush,
   ArrowDownUp, Pilcrow, IndentDecrease, IndentIncrease, ListCollapse,
-  Diamond, TableProperties, Settings, Focus, Pen, Eye, Trash2
+  Diamond, TableProperties, Settings, Focus, Pen, Eye, Trash2, RefreshCw
 } from 'lucide-react'
 import { useEditor, EditorContent } from '@tiptap/react'
 import { StarterKit } from '@tiptap/starter-kit'
@@ -981,6 +981,16 @@ function App() {
             <Settings size={14} />
             <span>Accessibilité : vérification terminée</span>
           </div>
+          {chatHistory.length > 0 && (
+            <button 
+              className="reset-chat-btn"
+              onClick={() => setChatHistory([])}
+              title={`Réinitialiser la mémoire IA (${chatHistory.length} messages)`}
+            >
+              <RefreshCw size={12} />
+              <span>IA: {Math.floor(chatHistory.length / 2)} échanges</span>
+            </button>
+          )}
         </div>
         <div className="status-bar-right">
           <button className="status-icon-btn">
