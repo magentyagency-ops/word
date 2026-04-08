@@ -1,15 +1,15 @@
-export async function solveExercise(text, attachments = []) {
+export async function solveExercise(text, attachments = [], history = []) {
   const apiKey = import.meta.env.VITE_OPENAI_API_KEY;
   if (!apiKey || apiKey === 'your_key_here' || !apiKey) {
     throw new Error('Clé API OpenAI manquante dans le fichier .env');
   }
 
-  // Build the message content parts
+  // Build the message content parts for the current message
   const contentParts = [
     { type: 'text', text: text || 'Please solve the attached exercise.' }
   ];
 
-  // Add attachments
+  // Add attachments to the current user message
   attachments.forEach(att => {
     if (att.content.startsWith('data:image')) {
       // Vision input
@@ -33,12 +33,13 @@ export async function solveExercise(text, attachments = []) {
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: 'gpt-5.4',
+      model: 'gpt-4o', // Using gpt-4o as it's more stable for vision/multi-modal tasks
       messages: [
         {
           role: 'system',
           content: 'You are an educational assistant. The user will provide an exercise or a question, possibly with images or text files. Some attachments may be course slides or background material; use them as context if they are relevant to solving the user question. Respond in simple, natural English with a clear structure. Do not use bullet points or any markdown formatting except for paragraph breaks. Provide only the text ready to be copied into a document. Do not add conversational filler like "Here is the answer".'
         },
+        ...history,
         {
           role: 'user',
           content: contentParts

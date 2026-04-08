@@ -36,6 +36,11 @@ function App() {
   const [isAiThinking, setIsAiThinking] = useState(false)
   const [errorMsg, setErrorMsg] = useState(null)
   const [knowledgeBase, setKnowledgeBase] = useState([]) // For global course context
+  const [isExplorerOpen, setIsExplorerOpen] = useState(false)
+  const [explorerFiles, setExplorerFiles] = useState([])
+  const [selectedFileForView, setSelectedFileForView] = useState(null)
+  const [searchQuery, setSearchQuery] = useState('')
+  const [chatHistory, setChatHistory] = useState([]) // Memory for AI context in session
 
   const editor = useEditor({
     extensions: [
@@ -88,7 +93,17 @@ function App() {
       setErrorMsg(null)
       try {
         const combinedAttachments = [...attachments, ...knowledgeBase]
-        const answer = await solveExercise(selectedText, combinedAttachments)
+        
+        // Call AI with current history
+        const answer = await solveExercise(selectedText, combinedAttachments, chatHistory)
+        
+        // Update history with this exchange (user text and assistant answer)
+        setChatHistory(prev => [
+          ...prev,
+          { role: 'user', content: selectedText || 'Context with attachments' },
+          { role: 'assistant', content: answer }
+        ])
+
         editor.chain().focus()
           .insertContentAt(to, `\n\n${answer}`)
           .run()
@@ -226,6 +241,111 @@ function App() {
     e.target.value = ''
   }
 
+  const handleFolderUpload = async (e) => {
+    const files = Array.from(e.target.files)
+    const newFiles = []
+    
+    for (const file of files) {
+      const fileData = {
+        name: file.name,
+        path: file.webkitRelativePath || file.name,
+        size: file.size,
+        type: file.type,
+        lastModified: file.lastModified,
+        rawFile: file 
+      }
+      newFiles.push(fileData)
+    }
+    
+    setExplorerFiles(prev => [...prev, ...newFiles])
+    if (!isExplorerOpen) setIsExplorerOpen(true)
+  }
+
+  const handleFileClick = async (fileData) => {
+    if (fileData.type === 'application/pdf') {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setSelectedFileForView({
+          ...fileData,
+          content: e.target.result,
+          viewType: 'pdf'
+        })
+      }
+      reader.readAsArrayBuffer(fileData.rawFile)
+    } else if (fileData.type.startsWith('image/')) {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setSelectedFileForView({
+          ...fileData,
+          content: e.target.result,
+          viewType: 'image'
+        })
+      }
+      reader.readAsDataURL(fileData.rawFile)
+    } else {
+      const reader = new FileReader()
+      reader.onload = (e) => {
+        setSelectedFileForView({
+          ...fileData,
+          content: e.target.result,
+          viewType: 'text'
+        })
+      }
+      reader.readAsText(fileData.rawFile)
+    }
+  }
+
+  const addToKnowledgeBase = (file) => {
+    const reader = new FileReader()
+    reader.onload = async (event) => {
+      let content = event.target.result
+      let type = 'text'
+      
+      if (file.type === 'application/pdf') {
+        try {
+          const typedarray = new Uint8Array(event.target.result)
+          const loadingTask = pdfjsLib.getDocument({ data: typedarray })
+          const pdf = await loadingTask.promise
+          content = ''
+          for (let i = 1; i <= pdf.numPages; i++) {
+            const page = await pdf.getPage(i)
+            const textContent = await page.getTextContent()
+            content += textContent.items.map(item => item.str).join(' ') + '\n'
+          }
+        } catch (err) {
+          console.error('Error parsing PDF for KB:', err)
+          return
+        }
+      } else if (file.type.startsWith('image/')) {
+        type = 'image'
+      }
+      
+      setKnowledgeBase(prev => [
+        ...prev,
+        { name: file.name, content, type }
+      ])
+    }
+    
+    if (file.type === 'application/pdf') {
+      reader.readAsArrayBuffer(file.rawFile || file)
+    } else if (file.type.startsWith('image/')) {
+      reader.readAsDataURL(file.rawFile || file)
+    } else {
+      reader.readAsText(file.rawFile || file)
+    }
+  }
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.altKey && e.key.toLowerCase() === 'e') {
+        e.preventDefault()
+        setIsExplorerOpen(prev => !prev)
+      }
+    }
+    window.addEventListener('keydown', handleKeyDown)
+    return () => window.removeEventListener('keydown', handleKeyDown)
+  }, [])
+
   if (!editor) return null
 
   const tabs = ['Accueil', 'Insérer', 'Dessin', 'Conception', 'Mise en page', 'Références', 'Publipostage', 'Révision', 'Affichage', 'Acrobat']
@@ -258,9 +378,12 @@ function App() {
         </div>
         <div className="title-bar-center">Document1</div>
         <div className="title-bar-right">
-          <button className="search-btn">
+          <button 
+            className={`search-btn ${isExplorerOpen ? 'active' : ''}`}
+            onClick={() => setIsExplorerOpen(!isExplorerOpen)}
+          >
             <Search size={14} />
-            <span>Rechercher (Cmd + Ctrl + U)</span>
+            <span>Explorateur de fichiers (Alt+E)</span>
           </button>
           <button className="comments-btn">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" style={{ marginRight: 4 }}>
@@ -701,12 +824,125 @@ function App() {
         </div>
       )}
 
-      {/* ═══════════ EDITOR AREA ═══════════ */}
-      <div className="editor-area" onClick={handleEditorClick}>
-        <div className="page">
-          <EditorContent editor={editor} />
+      {/* ═══════════ MAIN CONTENT AREA ═══════════ */}
+      <div className="main-container" style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+        {/* ═══════════ EDITOR AREA ═══════════ */}
+        <div className="editor-area" onClick={handleEditorClick} style={{ flex: 1 }}>
+          <div className="page">
+            <EditorContent editor={editor} />
+          </div>
         </div>
+
+        {/* ═══════════ EXPLORER SIDEBAR ═══════════ */}
+        {isExplorerOpen && (
+          <div className="explorer-sidebar">
+            <div className="explorer-header">
+              <div className="explorer-title">
+                <FileText size={16} />
+                <span>Explorateur de documents</span>
+              </div>
+              <button className="close-explorer" onClick={() => setIsExplorerOpen(false)}>×</button>
+            </div>
+            
+            <div className="explorer-actions">
+              <label className="explorer-upload-btn">
+                <Plus size={14} />
+                Charger un dossier
+                <input 
+                  type="file" 
+                  webkitdirectory="true" 
+                  directory="true" 
+                  multiple 
+                  onChange={handleFolderUpload}
+                  style={{ display: 'none' }}
+                />
+              </label>
+              <div className="explorer-search">
+                <Search size={12} />
+                <input 
+                  type="text" 
+                  placeholder="Rechercher..." 
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="explorer-list">
+              {explorerFiles.length === 0 ? (
+                <div className="explorer-empty">
+                  <p>Aucun fichier chargé.</p>
+                  <p className="hint">Sélectionnez un dossier contenant vos slides et documents de cours.</p>
+                </div>
+              ) : (
+                explorerFiles
+                  .filter(f => f.name.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map((file, idx) => (
+                    <div 
+                      key={idx} 
+                      className={`explorer-item ${selectedFileForView?.name === file.name ? 'selected' : ''}`}
+                      onClick={() => handleFileClick(file)}
+                    >
+                      <div className="file-icon">
+                        {file.type === 'application/pdf' ? <FileText size={14} color="#d93025" /> : 
+                         file.type.startsWith('image/') ? <Eye size={14} color="#185abd" /> : 
+                         <FileText size={14} color="#616161" />}
+                      </div>
+                      <div className="file-info">
+                        <span className="file-name" title={file.path}>{file.name}</span>
+                        <span className="file-meta">{(file.size / 1024).toFixed(0)} KB</span>
+                      </div>
+                      <button 
+                        className="add-to-kb-btn" 
+                        title="Ajouter au contexte IA"
+                        onClick={(e) => {
+                          e.stopPropagation()
+                          addToKnowledgeBase(file)
+                        }}
+                      >
+                        <Plus size={12} />
+                      </button>
+                    </div>
+                  ))
+              )}
+            </div>
+          </div>
+        )}
       </div>
+
+      {/* ═══════════ FILE VIEWER MODAL ═══════════ */}
+      {selectedFileForView && (
+        <div className="file-viewer-overlay" onClick={() => setSelectedFileForView(null)}>
+          <div className="file-viewer-content" onClick={e => e.stopPropagation()}>
+            <div className="viewer-header">
+              <div className="viewer-title">{selectedFileForView.name}</div>
+              <div className="viewer-actions">
+                <button className="viewer-action-btn" onClick={() => addToKnowledgeBase(selectedFileForView)}>
+                  <Shield size={14} style={{ marginRight: 4 }} />
+                  Utiliser pour l'IA
+                </button>
+                <button className="close-viewer" onClick={() => setSelectedFileForView(null)}>×</button>
+              </div>
+            </div>
+            <div className="viewer-body">
+              {selectedFileForView.viewType === 'pdf' ? (
+                <iframe 
+                  src={URL.createObjectURL(new Blob([selectedFileForView.content], { type: 'application/pdf' }))} 
+                  title="PDF Viewer"
+                  width="100%"
+                  height="100%"
+                />
+              ) : selectedFileForView.viewType === 'image' ? (
+                <div className="image-viewer">
+                  <img src={selectedFileForView.content} alt={selectedFileForView.name} />
+                </div>
+              ) : (
+                <pre className="text-viewer">{selectedFileForView.content}</pre>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       <input 
         type="file" 
