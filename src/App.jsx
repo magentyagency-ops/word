@@ -71,7 +71,7 @@ function App() {
     return text.trim().split(/\s+/).length
   }, [editor])
 
-  const handleItalicClick = async () => {
+  const handleItalicClick = useCallback(async () => {
     if (!editor) return
     
     const { from, to } = editor.state.selection
@@ -88,17 +88,24 @@ function App() {
       }
     })
 
-    // If text is selected or attachments exist, trigger AI
-    if ((selectedText && selectedText.trim().length > 3) || attachments.length > 0) {
+    // Determine if we should trigger AI: 
+    // - If it's a "substantial" request (>3 chars) OR
+    // - If there's an attachment OR
+    // - If we have a conversation history (allow short follow-ups like "why?" or "explain more")
+    const isAiRequest = (selectedText && selectedText.trim().length > 1) || attachments.length > 0 || chatHistory.length > 0
+
+    if (isAiRequest && selectedText.trim().length > 0) {
       setIsAiThinking(true)
       setErrorMsg(null)
       try {
         const combinedAttachments = [...attachments, ...knowledgeBase]
         
+        console.log('Sending to AI with history:', chatHistory.length, 'messages')
+        
         // Pass current history to AI
         const { answer, userMessageSent, assistantMessageReceived } = await solveExercise(selectedText, combinedAttachments, chatHistory)
         
-        // Save FULL messages in history (including those complex content parts)
+        // Save FULL messages in history
         setChatHistory(prev => [
           ...prev,
           userMessageSent,
@@ -109,7 +116,7 @@ function App() {
           .insertContentAt(to, `\n\n${answer}`)
           .run()
       } catch (err) {
-        console.error(err)
+        console.error('AI Error:', err)
         setErrorMsg(err.message)
         setTimeout(() => setErrorMsg(null), 5000)
       } finally {
@@ -119,7 +126,7 @@ function App() {
       // Normal italic behavior
       editor.chain().focus().toggleItalic().run()
     }
-  }
+  }, [editor, knowledgeBase, chatHistory])
 
   const fileInputRef = useRef(null)
 

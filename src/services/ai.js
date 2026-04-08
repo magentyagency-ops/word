@@ -32,7 +32,7 @@ export async function solveExercise(text, attachments = [], history = []) {
   const messages = [
     {
       role: 'system',
-      content: 'You are an educational assistant. The user will provide an exercise or a question, possibly with images or text files. Some attachments may be course slides or background material; use them as context if they are relevant to solving the user question. Respond in simple, natural English with a clear structure. Do not use bullet points or any markdown formatting except for paragraph breaks. Provide only the text ready to be copied into a document. Do not add conversational filler like "Here is the answer".'
+      content: 'You are an educational assistant. This is a conversation; remember previous turns. Use provided attachments as context. Always respond in the SAME language the user uses. Do not use markdown bullet points, only paragraph breaks. Provide only the helpful text ready for insertion. No filler.'
     },
     ...history,
     currentUserMessage
