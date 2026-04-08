@@ -53,7 +53,7 @@ export async function solveExercise(text, attachments = [], history = []) {
     body: JSON.stringify({
       model: 'gpt-4o',
       messages: messages,
-      temperature: 0.7
+      temperature: 0.7, max_tokens: 4096
     })
   });
 
