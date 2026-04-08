@@ -4,27 +4,45 @@ export async function solveExercise(text, attachments = [], history = []) {
     throw new Error('Clé API OpenAI manquante dans le fichier .env');
   }
 
-  // Build the message content parts for the current message
-  const contentParts = [
-    { type: 'text', text: text || 'Please solve the attached exercise.' }
+  // Build the current user message content parts
+  const currentContentParts = [
+    { type: 'text', text: text || 'Please solve the attached exercise or continue our conversation.' }
   ];
 
   // Add attachments to the current user message
   attachments.forEach(att => {
     if (att.content.startsWith('data:image')) {
-      // Vision input
-      contentParts.push({
+      currentContentParts.push({
         type: 'image_url',
         image_url: { url: att.content }
       });
     } else {
-      // Text attachment
-      contentParts.push({
+      currentContentParts.push({
         type: 'text',
         text: `\n\nContent of attached file "${att.name}":\n${att.content}`
       });
     }
   });
+
+  const currentUserMessage = {
+    role: 'user',
+    content: currentContentParts
+  };
+
+  const messages = [
+    {
+      role: 'system',
+      content: 'You are an educational assistant. The user will provide an exercise or a question, possibly with images or text files. Some attachments may be course slides or background material; use them as context if they are relevant to solving the user question. Respond in simple, natural English with a clear structure. Do not use bullet points or any markdown formatting except for paragraph breaks. Provide only the text ready to be copied into a document. Do not add conversational filler like "Here is the answer".'
+    },
+    ...history,
+    currentUserMessage
+  ];
+
+  // Debug check: See what is being sent to the AI
+  console.log('--- AI CONTEXT ---');
+  console.log(`History length: ${history.length} messages`);
+  console.log('Current message:', currentUserMessage);
+  console.log('-----------------');
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
     method: 'POST',
@@ -33,18 +51,8 @@ export async function solveExercise(text, attachments = [], history = []) {
       'Authorization': `Bearer ${apiKey}`
     },
     body: JSON.stringify({
-      model: 'gpt-4o', // Using gpt-4o as it's more stable for vision/multi-modal tasks
-      messages: [
-        {
-          role: 'system',
-          content: 'You are an educational assistant. The user will provide an exercise or a question, possibly with images or text files. Some attachments may be course slides or background material; use them as context if they are relevant to solving the user question. Respond in simple, natural English with a clear structure. Do not use bullet points or any markdown formatting except for paragraph breaks. Provide only the text ready to be copied into a document. Do not add conversational filler like "Here is the answer".'
-        },
-        ...history,
-        {
-          role: 'user',
-          content: contentParts
-        }
-      ],
+      model: 'gpt-4o',
+      messages: messages,
       temperature: 0.7
     })
   });
@@ -55,5 +63,12 @@ export async function solveExercise(text, attachments = [], history = []) {
   }
 
   const data = await response.json();
-  return data.choices[0].message.content.trim();
+  const assistantAnswer = data.choices[0].message.content.trim();
+
+  // Return both the answer AND the message objects to allow App.jsx to update history correctly
+  return {
+    answer: assistantAnswer,
+    userMessageSent: currentUserMessage,
+    assistantMessageReceived: { role: 'assistant', content: assistantAnswer }
+  };
 }

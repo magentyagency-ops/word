@@ -94,14 +94,14 @@ function App() {
       try {
         const combinedAttachments = [...attachments, ...knowledgeBase]
         
-        // Call AI with current history
-        const answer = await solveExercise(selectedText, combinedAttachments, chatHistory)
+        // Pass current history to AI
+        const { answer, userMessageSent, assistantMessageReceived } = await solveExercise(selectedText, combinedAttachments, chatHistory)
         
-        // Update history with this exchange (user text and assistant answer)
+        // Save FULL messages in history (including those complex content parts)
         setChatHistory(prev => [
           ...prev,
-          { role: 'user', content: selectedText || 'Context with attachments' },
-          { role: 'assistant', content: answer }
+          userMessageSent,
+          assistantMessageReceived
         ])
 
         editor.chain().focus()
