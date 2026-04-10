@@ -9,7 +9,14 @@ export async function solveExercise(text, attachments = [], history = []) {
     { type: 'text', text: text || 'Please solve the attached exercise or continue our conversation.' }
   ];
 
-  // Add attachments to the CURRENT message only with size limits
+  // Calculate dynamic text budget to NEVER exceed context limits (~128k tokens = ~400k chars)
+  // We safely cap the total attachments text to 350,000 chars. 
+  const MAX_TOTAL_CHARS = 350000;
+  const textAttachments = attachments.filter(a => !a.content.startsWith('data:image'));
+  const totalTextChars = textAttachments.reduce((acc, att) => acc + att.content.length, 0);
+  const scaleFactor = totalTextChars > MAX_TOTAL_CHARS ? MAX_TOTAL_CHARS / totalTextChars : 1;
+
+  // Add attachments to the CURRENT message only with smart dynamic truncation
   attachments.forEach(att => {
     if (att.content.startsWith('data:image')) {
       currentContentParts.push({
@@ -17,10 +24,10 @@ export async function solveExercise(text, attachments = [], history = []) {
         image_url: { url: att.content }
       });
     } else {
-      // LIMIT: Truncate very long documents to prevent saturation (approx 100k chars ~ 25k tokens)
-      const maxChars = 80000;
-      const truncatedContent = att.content.length > maxChars 
-        ? att.content.substring(0, maxChars) + "... [Extrait tronqué pour préserver la mémoire]" 
+      const allowedChars = Math.floor(att.content.length * scaleFactor);
+      const isTruncated = allowedChars < att.content.length;
+      const truncatedContent = isTruncated 
+        ? att.content.substring(0, allowedChars) + "\n\n... [Extrait tronqué - Limite de contexte atteinte, mais les informations principales sont conservées]" 
         : att.content;
 
       currentContentParts.push({

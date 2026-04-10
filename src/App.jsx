@@ -22,6 +22,7 @@ import { FileAttachment } from './extensions/FileAttachment'
 import { useRef, useEffect } from 'react'
 import * as pdfjsLib from 'pdfjs-dist'
 import pdfWorker from 'pdfjs-dist/build/pdf.worker.min.mjs?url'
+import mammoth from 'mammoth'
 
 // Setup PDF worker using the local bundled worker for reliability
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorker
@@ -160,6 +161,17 @@ function App() {
     }
   }
 
+  // Generic helper to extract text from DOCX
+  const extractTextFromDocx = async (arrayBuffer) => {
+    try {
+      const result = await mammoth.extractRawText({ arrayBuffer })
+      return result.value || ''
+    } catch (err) {
+      console.error('DOCX Extraction error:', err)
+      throw new Error(`Erreur d'extraction du document Word: ${err.message}`)
+    }
+  }
+
   const onFileChange = async (e) => {
     const file = e.target.files[0]
     if (!file || !editor) return
@@ -170,6 +182,17 @@ function App() {
       if (file.type === 'application/pdf') {
         const buffer = await file.arrayBuffer()
         const text = await extractTextFromPDF(buffer)
+        
+        editor.chain().focus()
+          .updateAttributes('fileAttachment', {
+            fileName: file.name,
+            fileContent: text,
+            status: 'attached'
+          })
+          .run()
+      } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+        const buffer = await file.arrayBuffer()
+        const text = await extractTextFromDocx(buffer)
         
         editor.chain().focus()
           .updateAttributes('fileAttachment', {
@@ -225,6 +248,13 @@ function App() {
         if (file.type === 'application/pdf') {
           const buffer = await file.arrayBuffer()
           const text = await extractTextFromPDF(buffer)
+          setKnowledgeBase(prev => [
+            ...prev,
+            { name: file.name, content: text, type: 'text' }
+          ])
+        } else if (file.type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' || file.name.endsWith('.docx')) {
+          const buffer = await file.arrayBuffer()
+          const text = await extractTextFromDocx(buffer)
           setKnowledgeBase(prev => [
             ...prev,
             { name: file.name, content: text, type: 'text' }
